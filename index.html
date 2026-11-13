@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ULOL</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+    #mosaic {
+      font-family: 'Courier New', monospace;
+      white-space: pre;
+      user-select: none;
+      line-height: 1;
+      letter-spacing: 0;
+      transform-origin: center center;
+      font-weight: bold;
+      text-shadow: 1px 1px 2px rgba(0,0,0,0.5);
+    }
+    #loading {
+      position: absolute;
+      color: white;
+      font-family: sans-serif;
+      font-size: 18px;
+      text-align: center;
+    }
+    #loading-spinner {
+      display: inline-block;
+      width: 40px;
+      height: 40px;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: white;
+      animation: spin 1s ease-in-out infinite;
+      margin-bottom: 15px;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    #loading-progress {
+      margin-top: 10px;
+      font-size: 14px;
+      color: rgba(255, 255, 255, 0.7);
+    }
+    #loading-error {
+      color: #ff6b6b;
+      margin-top: 10px;
+    }
+    #retry-btn {
+      margin-top: 15px;
+      padding: 10px 20px;
+      background: white;
+      color: black;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      display: none;
+    }
+    #retry-btn:hover {
+      background: #e0e0e0;
+    }
+    #change-image-btn {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      padding: 12px 24px;
+      background: white;
+      color: black;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      z-index: 100;
+    }
+    #change-image-btn:hover {
+      background: #e0e0e0;
+    }
+    #image-input {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="loading">
+    <div id="loading-spinner"></div>
+    <div id="loading-text">Loading mosaic...</div>
+    <div id="loading-progress">0%</div>
+    <div id="loading-error"></div>
+    <button id="retry-btn" onclick="retryLoading()">Retry</button>
+  </div>
+  <div id="mosaic" aria-label="Text mosaic"></div>
+  <button id="change-image-btn" onclick="document.getElementById('image-input').click()">Change Image</button>
+  <input type="file" id="image-input" accept="image/*" onchange="handleImageUpload(event)">
+
+  <script>
+    const TEXT = "ganda, cute";
+    const CHAR_W = 8;
+    const CHAR_H = 12;
+    let currentImg = null;
+    let loadAttempts = 0;
+    const MAX_LOAD_ATTEMPTS = 3;
+
+    function updateLoadingProgress(percent) {
+      const progressEl = document.getElementById("loading-progress");
+      progressEl.textContent = percent + "%";
+    }
+
+    function showLoadingError(message) {
+      const spinner = document.getElementById("loading-spinner");
+      const textEl = document.getElementById("loading-text");
+      const errorEl = document.getElementById("loading-error");
+      const retryBtn = document.getElementById("retry-btn");
+
+      spinner.style.display = "none";
+      textEl.textContent = "Error loading mosaic";
+      errorEl.textContent = message;
+      retryBtn.style.display = "inline-block";
+    }
+
+    function hideLoading() {
+      document.getElementById("loading").style.display = "none";
+    }
+
+    function resetLoadingUI() {
+      const spinner = document.getElementById("loading-spinner");
+      const textEl = document.getElementById("loading-text");
+      const errorEl = document.getElementById("loading-error");
+      const retryBtn = document.getElementById("retry-btn");
+      const progressEl = document.getElementById("loading-progress");
+
+      spinner.style.display = "inline-block";
+      textEl.textContent = "Loading mosaic...";
+      errorEl.textContent = "";
+      retryBtn.style.display = "none";
+      progressEl.textContent = "0%";
+    }
+
+    function render() {
+      const img = window._img;
+      if (!img) return;
+
+      const screenW = window.innerWidth;
+      const screenH = window.innerHeight;
+
+      const maxCols = Math.floor(screenW / CHAR_W);
+      const maxRows = Math.floor(screenH / CHAR_H);
+
+      const imgRatio = img.width / img.height;
+      let cols = maxCols;
+      let rows = Math.floor((cols * CHAR_W) / imgRatio / CHAR_H);
+      if (rows > maxRows) {
+        rows = maxRows;
+        cols = Math.floor((rows * CHAR_H) * imgRatio / CHAR_W);
+      }
+
+      const canvas = document.createElement("canvas");
+      canvas.width = cols;
+      canvas.height = rows;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(img, 0, 0, cols, rows);
+
+      const pixels = ctx.getImageData(0, 0, cols, rows).data;
+
+      let html = "";
+      let textIndex = 0;
+      for (let y = 0; y < rows; y++) {
+        for (let x = 0; x < cols; x++) {
+          const i = (y * cols + x) * 4;
+          const r = pixels[i];
+          const g = pixels[i + 1];
+          const b = pixels[i + 2];
+          const char = TEXT[textIndex % TEXT.length];
+          html += '<span style="color:rgb(' + r + ',' + g + ',' + b + ')">' + char + '</span>';
+          textIndex++;
+        }
+        html += "\n";
+      }
+
+      const mosaic = document.getElementById("mosaic");
+      mosaic.style.fontSize = CHAR_H + "px";
+      mosaic.innerHTML = html;
+      hideLoading();
+    }
+
+    function loadImage() {
+      loadAttempts++;
+      resetLoadingUI();
+
+      const img = new Image();
+      
+      // Simulate loading progress
+      let progress = 0;
+      const progressInterval = setInterval(() => {
+        if (progress < 90) {
+          progress += Math.random() * 15;
+          if (progress > 90) progress = 90;
+          updateLoadingProgress(Math.round(progress));
+        }
+      }, 200);
+
+      img.onload = function () {
+        clearInterval(progressInterval);
+        updateLoadingProgress(100);
+        setTimeout(() => {
+          window._img = img;
+          currentImg = img;
+          loadAttempts = 0;
+          render();
+        }, 200);
+      };
+
+      img.onerror = function () {
+        clearInterval(progressInterval);
+        if (loadAttempts < MAX_LOAD_ATTEMPTS) {
+          showLoadingError(`Failed to load photo1.jpg (Attempt ${loadAttempts}/${MAX_LOAD_ATTEMPTS})`);
+        } else {
+          showLoadingError("Failed to load photo1.jpg after multiple attempts. Please check if the file exists.");
+        }
+      };
+
+      // Add loading timeout
+      img.onloadstart = function() {
+        updateLoadingProgress(10);
+      };
+
+      img.src = "photo1.jpg";
+    }
+
+    function retryLoading() {
+      loadImage();
+    }
+
+    function handleImageUpload(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const img = new Image();
+          img.onload = function() {
+            window._img = img;
+            currentImg = img;
+            render();
+          };
+          img.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+      }
+    }
+
+    // Initial load
+    loadImage();
+
+    let resizeTimer;
+    window.addEventListener("resize", () => {
+      clearTimeout(resizeTimer);
+      resizeTimer = setTimeout(render, 150);
+    });
+  </script>
+</body>
+</html>
